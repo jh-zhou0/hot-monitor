@@ -1,6 +1,11 @@
 # AI 热点监控系统
 
 一个由 AI 驱动的实时热点监控工具，帮助你第一时间发现 AI 领域的重大更新和热点事件。
+![alt text](assets/0b6308a7-dd66-472f-aed5-922c0fb05fd6.png) 
+
+
+
+![alt text](assets/5e79be9b-f8fd-4720-bf48-4f850d3d59d5.png)
 
 ## 功能特性
 
