@@ -2,7 +2,7 @@ import { RawSearchResult, AIAnalysisResult } from '@/types';
 import { chatCompletion } from './openrouter';
 import { HOTSPOT_ANALYSIS_PROMPT, buildAnalysisUserPrompt } from './prompts';
 
-export async function analyzeHotspots(results: RawSearchResult[]): Promise<AIAnalysisResult[]> {
+export async function analyzeHotspots(results: RawSearchResult[], keyword: string): Promise<AIAnalysisResult[]> {
   if (results.length === 0) return [];
 
   const batchSize = 5;
@@ -10,16 +10,16 @@ export async function analyzeHotspots(results: RawSearchResult[]): Promise<AIAna
 
   for (let i = 0; i < results.length; i += batchSize) {
     const batch = results.slice(i, i + batchSize);
-    const batchAnalysis = await analyzeBatch(batch);
+    const batchAnalysis = await analyzeBatch(batch, keyword);
     allAnalysis.push(...batchAnalysis);
   }
 
   return allAnalysis;
 }
 
-async function analyzeBatch(results: RawSearchResult[]): Promise<AIAnalysisResult[]> {
+async function analyzeBatch(results: RawSearchResult[], keyword: string): Promise<AIAnalysisResult[]> {
   try {
-    const userPrompt = buildAnalysisUserPrompt(results);
+    const userPrompt = buildAnalysisUserPrompt(results, keyword);
     const response = await chatCompletion([
       { role: 'system', content: HOTSPOT_ANALYSIS_PROMPT },
       { role: 'user', content: userPrompt },

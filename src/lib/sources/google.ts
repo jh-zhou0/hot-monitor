@@ -2,8 +2,9 @@ import * as cheerio from 'cheerio';
 import { RawSearchResult } from '@/types';
 
 export async function searchGoogle(keyword: string): Promise<RawSearchResult[]> {
-  const query = encodeURIComponent(keyword);
-  const url = `https://www.google.com/search?q=${query}&hl=zh-CN&num=10`;
+  const searchQuery = keyword.includes(' ') ? `"${keyword}"` : keyword;
+  const query = encodeURIComponent(searchQuery);
+  const url = `https://www.google.com/search?q=${query}&hl=zh-CN&num=10&tbs=qdr:w`;
 
   try {
     const res = await fetch(url, {

@@ -5,8 +5,9 @@ import { searchLimiter } from '@/lib/utils/rate-limiter';
 export async function searchDuckDuckGo(keyword: string): Promise<RawSearchResult[]> {
   await searchLimiter.waitForSlot();
 
-  const query = encodeURIComponent(keyword);
-  const url = `https://html.duckduckgo.com/html/?q=${query}`;
+  const searchQuery = keyword.includes(' ') ? `"${keyword}"` : keyword;
+  const query = encodeURIComponent(searchQuery);
+  const url = `https://html.duckduckgo.com/html/?q=${query}&df=w`;
 
   try {
     const res = await fetch(url, {

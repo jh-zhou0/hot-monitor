@@ -2,7 +2,8 @@ import * as cheerio from 'cheerio';
 import { RawSearchResult } from '@/types';
 
 export async function searchSogou(keyword: string): Promise<RawSearchResult[]> {
-  const query = encodeURIComponent(keyword);
+  const searchQuery = keyword.includes(' ') ? `"${keyword}"` : keyword;
+  const query = encodeURIComponent(searchQuery);
   const url = `https://www.sogou.com/web?query=${query}&num=10`;
 
   try {

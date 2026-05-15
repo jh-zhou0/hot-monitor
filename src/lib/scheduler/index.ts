@@ -41,7 +41,7 @@ async function runMonitorCycle() {
         const rawResults = await aggregateSearch(kw.keyword);
         if (rawResults.length === 0) continue;
 
-        const analysis = await analyzeHotspots(rawResults);
+        const analysis = await analyzeHotspots(rawResults, kw.keyword);
 
         for (let i = 0; i < rawResults.length && i < analysis.length; i++) {
           const raw = rawResults[i];

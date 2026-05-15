@@ -27,7 +27,9 @@ export async function aggregateSearch(keyword: string): Promise<RawSearchResult[
     }
   }
 
-  return deduplicateResults(allResults);
+  const deduped = deduplicateResults(allResults);
+  const dateFiltered = filterByDate(deduped);
+  return filterByRelevance(dateFiltered, keyword);
 }
 
 function deduplicateResults(results: RawSearchResult[]): RawSearchResult[] {
@@ -48,4 +50,46 @@ function normalizeForDedup(text: string): string {
     .toLowerCase()
     .replace(/[^\w一-鿿]/g, '')
     .slice(0, 50);
+}
+
+function filterByDate(results: RawSearchResult[]): RawSearchResult[] {
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  return results.filter(r => {
+    if (!r.published_at) return true;
+    const pubDate = new Date(r.published_at);
+    if (isNaN(pubDate.getTime())) return true;
+    return pubDate >= sevenDaysAgo;
+  });
+}
+
+function filterByRelevance(results: RawSearchResult[], keyword: string): RawSearchResult[] {
+  const terms = keyword.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+  if (terms.length === 0) return results;
+
+  return results.filter(r => {
+    const text = `${r.title} ${r.snippet}`.toLowerCase();
+    let matchedCount = 0;
+
+    for (const term of terms) {
+      if (termMatches(text, term)) {
+        matchedCount++;
+      }
+    }
+
+    if (terms.length <= 2) {
+      return matchedCount === terms.length;
+    }
+    return matchedCount >= terms.length - 1;
+  });
+}
+
+function termMatches(text: string, term: string): boolean {
+  if (/^\d+$/.test(term)) {
+    // Numeric term: avoid "5" matching inside "3.5"
+    const regex = new RegExp(`(?<!\\d\\.)${term}\\b`);
+    return regex.test(text);
+  }
+  return text.includes(term);
 }

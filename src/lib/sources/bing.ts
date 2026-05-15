@@ -5,8 +5,9 @@ import { searchLimiter } from '@/lib/utils/rate-limiter';
 export async function searchBing(keyword: string): Promise<RawSearchResult[]> {
   await searchLimiter.waitForSlot();
 
-  const query = encodeURIComponent(keyword);
-  const url = `https://www.bing.com/search?q=${query}&setlang=zh-CN&count=10`;
+  const searchQuery = keyword.includes(' ') ? `"${keyword}"` : keyword;
+  const query = encodeURIComponent(searchQuery);
+  const url = `https://www.bing.com/search?q=${query}&setlang=zh-CN&count=10&filters=${encodeURIComponent('ex1:"ez2"')}`;
 
   try {
     const res = await fetch(url, {
