@@ -56,7 +56,7 @@ export function HotspotCard({
               {level.label === '高' ? '⚡' : level.label === '中' ? '◈' : '·'} {level.label}
             </span>
             {/* 来源 */}
-            <span className="text-[10px] font-mono text-text-dim border border-text-dim/20 px-1.5 py-0.5 rounded">
+            <span className="text-[10px] font-mono text-text-muted border border-text-muted/40 bg-white/5 px-1.5 py-0.5 rounded">
               {sourceMeta.icon} {sourceMeta.label}
             </span>
             {/* 匹配度 */}
