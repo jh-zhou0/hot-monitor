@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_context7_context7__query-docs",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "Bash(npm install *)",
+      "Bash(npx next *)",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":3000\")",
+      "Bash(findstr \"LISTENING\")",
+      "Bash(npx tsx *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/)",
+      "Bash(awk '{print $5}')",
+      "Bash(xargs -r taskkill //F //PID)"
+    ]
+  }
+}

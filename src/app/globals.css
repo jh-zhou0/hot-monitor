@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-primary: #0a0a0f;
+  --color-bg-secondary: #12121a;
+  --color-bg-tertiary: #1a1a2e;
+  --color-bg-card: #0f0f1a;
+  --color-neon-cyan: #00f5ff;
+  --color-neon-magenta: #ff00ff;
+  --color-neon-yellow: #f5ff00;
+  --color-neon-green: #00ff88;
+  --color-neon-red: #ff3366;
+  --color-neon-purple: #bf00ff;
+  --color-text-primary: #e0e0e8;
+  --color-text-muted: #666680;
+  --color-text-dim: #3a3a50;
+  --color-border-glow: rgba(0, 245, 255, 0.3);
+  --font-display: "Orbitron", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-neon-cyan) var(--color-bg-secondary);
+}
+
+body {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+}
+
+::selection {
+  background: rgba(0, 245, 255, 0.3);
+  color: #fff;
+}
+
+@keyframes neon-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes scan-line {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+@keyframes glow-border {
+  0%, 100% {
+    box-shadow: 0 0 5px var(--color-neon-cyan), 0 0 10px rgba(0, 245, 255, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 10px var(--color-neon-cyan), 0 0 20px rgba(0, 245, 255, 0.5), 0 0 30px rgba(0, 245, 255, 0.2);
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  92% { opacity: 1; }
+  93% { opacity: 0.3; }
+  94% { opacity: 1; }
+  96% { opacity: 0.5; }
+  97% { opacity: 1; }
+}
+
+.animate-neon-pulse {
+  animation: neon-pulse 2s ease-in-out infinite;
+}
+
+.animate-glow-border {
+  animation: glow-border 3s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-flicker {
+  animation: flicker 4s linear infinite;
+}
+
+.neon-text-cyan {
+  color: var(--color-neon-cyan);
+  text-shadow: 0 0 7px var(--color-neon-cyan), 0 0 10px var(--color-neon-cyan), 0 0 21px var(--color-neon-cyan);
+}
+
+.neon-text-magenta {
+  color: var(--color-neon-magenta);
+  text-shadow: 0 0 7px var(--color-neon-magenta), 0 0 10px var(--color-neon-magenta), 0 0 21px var(--color-neon-magenta);
+}
+
+.neon-text-green {
+  color: var(--color-neon-green);
+  text-shadow: 0 0 7px var(--color-neon-green), 0 0 10px var(--color-neon-green);
+}
+
+.cyber-grid-bg {
+  background-image:
+    linear-gradient(rgba(0, 245, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 245, 255, 0.03) 1px, transparent 1px);
+  background-size: 50px 50px;
+}
