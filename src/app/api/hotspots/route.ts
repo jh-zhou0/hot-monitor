@@ -118,32 +118,23 @@ export async function GET(req: NextRequest) {
   sql += ' LIMIT ? OFFSET ?';
   params.push(limit, offset);
 
-  const hotspots = getAll<Hotspot>(sql, params);
+  let hotspots: Hotspot[] = [];
+  try {
+    hotspots = getAll<Hotspot>(sql, params);
+  } catch (e) {
+    console.error('[API] SQL error on main query:', sql, JSON.stringify(params), e);
+    return NextResponse.json({ error: 'Database query failed', detail: String(e) }, { status: 500 });
+  }
 
   // --- 统计 ---
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayStr = todayStart.toISOString();
 
-  // 统计（未过滤前 + 过滤后的匹配总数用于分页）
   const totalCount   = getOne<{ count: number }>('SELECT COUNT(*) as count FROM hotspots');
   const todayCount   = getOne<{ count: number }>('SELECT COUNT(*) as count FROM hotspots WHERE discovered_at >= ?', [todayStr]);
   const urgentCount  = getOne<{ count: number }>('SELECT COUNT(*) as count FROM hotspots WHERE ai_score >= 80');
   const keywordCount = getOne<{ count: number }>('SELECT COUNT(*) as count FROM keywords WHERE is_active = 1');
-
-  // 获取过滤后的匹配总数（用于分页）
-  let countSql = 'SELECT COUNT(*) as count FROM hotspots h WHERE 1=1';
-  // 复用同样的 WHERE 条件（不含 LIMIT/OFFSET）
-  const countParams: unknown[] = [];
-  // 复制筛选条件（不含 ORDER BY / LIMIT / OFFSET）
-  // 提取 WHERE 子句部分：从 "SELECT h.* FROM hotspots h WHERE 1=1" 之后到 ORDER BY 之前
-  const whereClause = sql.substring(sql.indexOf('WHERE 1=1') + 10, sql.lastIndexOf(' ORDER BY'));
-  if (whereClause.trim()) {
-    countSql += whereClause;
-    // params 中前几个是 WHERE 参数（不含 LIMIT/OFFSET）
-    countParams.push(...params.slice(0, params.length - 2));
-  }
-  const filteredCount = getOne<{ count: number }>(countSql, countParams);
 
   return NextResponse.json({
     hotspots,
@@ -152,7 +143,7 @@ export async function GET(req: NextRequest) {
       today:    todayCount?.count   || 0,
       urgent:   urgentCount?.count  || 0,
       keywords: keywordCount?.count || 0,
-      filtered: filteredCount?.count || 0,
+      filtered: totalCount?.count   || 0, // 使用总标记作为分页基数值
     },
   });
 }
