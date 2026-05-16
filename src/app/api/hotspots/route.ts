@@ -50,10 +50,16 @@ export async function GET(req: NextRequest) {
     params.push(Number(maxScore));
   }
 
-  // 关键词 ID 筛选
+  // 关键词 ID 筛选（单个或逗号分隔多个）
   if (keywordId) {
-    sql += ' AND h.keyword_id = ?';
-    params.push(Number(keywordId));
+    const ids = keywordId.split(',').map(Number).filter(n => !isNaN(n));
+    if (ids.length === 1) {
+      sql += ' AND h.keyword_id = ?';
+      params.push(ids[0]);
+    } else if (ids.length > 1) {
+      sql += ` AND h.keyword_id IN (${ids.map(() => '?').join(',')})`;
+      params.push(...ids);
+    }
   }
 
   // 关键词分类筛选（通过 JOIN keywords 表）
@@ -116,10 +122,25 @@ export async function GET(req: NextRequest) {
   todayStart.setHours(0, 0, 0, 0);
   const todayStr = todayStart.toISOString();
 
+  // 统计（未过滤前 + 过滤后的匹配总数用于分页）
   const totalCount   = getOne<{ count: number }>('SELECT COUNT(*) as count FROM hotspots');
   const todayCount   = getOne<{ count: number }>('SELECT COUNT(*) as count FROM hotspots WHERE discovered_at >= ?', [todayStr]);
   const urgentCount  = getOne<{ count: number }>('SELECT COUNT(*) as count FROM hotspots WHERE ai_score >= 80');
   const keywordCount = getOne<{ count: number }>('SELECT COUNT(*) as count FROM keywords WHERE is_active = 1');
+
+  // 获取过滤后的匹配总数（用于分页）
+  let countSql = 'SELECT COUNT(*) as count FROM hotspots h WHERE 1=1';
+  // 复用同样的 WHERE 条件（不含 LIMIT/OFFSET）
+  const countParams: unknown[] = [];
+  // 复制筛选条件（不含 ORDER BY / LIMIT / OFFSET）
+  // 提取 WHERE 子句部分：从 "SELECT h.* FROM hotspots h WHERE 1=1" 之后到 ORDER BY 之前
+  const whereClause = sql.substring(sql.indexOf('WHERE 1=1') + 10, sql.lastIndexOf(' ORDER BY'));
+  if (whereClause.trim()) {
+    countSql += whereClause;
+    // params 中前几个是 WHERE 参数（不含 LIMIT/OFFSET）
+    countParams.push(...params.slice(0, params.length - 2));
+  }
+  const filteredCount = getOne<{ count: number }>(countSql, countParams);
 
   return NextResponse.json({
     hotspots,
@@ -128,6 +149,7 @@ export async function GET(req: NextRequest) {
       today:    todayCount?.count   || 0,
       urgent:   urgentCount?.count  || 0,
       keywords: keywordCount?.count || 0,
+      filtered: filteredCount?.count || 0,
     },
   });
 }
