@@ -9,13 +9,14 @@ import { NeonText } from '@/components/ui/neon-text';
 import { useSocket } from '@/lib/hooks/use-socket';
 import { Hotspot, Keyword, SourceType } from '@/types';
 
-type CardFilter = 'all' | 'today' | 'urgent' | 'keyword';
 type SortField = 'score' | 'discovered_at' | 'published_at' | 'source_type' | 'keyword_id';
 type TimeRange = 'all' | '1h' | '6h' | '24h' | '3d' | '7d' | 'custom';
 type GroupMode = 'none' | 'source' | 'keyword' | 'score' | 'time';
+type TimeField = 'discovered_at' | 'published_at';
 
-const SOURCE_FILTERS: { value: SourceType | 'all'; label: string; icon: string }[] = [
-  { value: 'all',        label: '全部来源',   icon: '◈' },
+type FilterDropdown = 'source' | 'time' | 'score' | 'keyword' | 'sort' | null;
+
+const SOURCES: { value: SourceType; label: string; icon: string }[] = [
   { value: 'bing',       label: 'Bing',       icon: '🔍' },
   { value: 'duckduckgo', label: 'DuckDuckGo', icon: '🦆' },
   { value: 'google',     label: 'Google',     icon: 'G' },
@@ -40,22 +41,21 @@ const TIME_OPTIONS: { value: TimeRange; label: string }[] = [
   { value: '24h',  label: '24小时' },
   { value: '3d',   label: '3天' },
   { value: '7d',   label: '7天' },
-  { value: 'custom', label: '自定义' },
 ];
 
 const SCORE_PRESETS = [
   { min: 0,   max: 100, label: '全部' },
-  { min: 80,  max: 100, label: '紧急' },
-  { min: 60,  max: 79,  label: '中等' },
-  { min: 0,   max: 59,  label: '普通' },
+  { min: 80,  max: 100, label: '紧急 (80-100)' },
+  { min: 60,  max: 79,  label: '中等 (60-79)' },
+  { min: 0,   max: 59,  label: '普通 (0-59)' },
 ];
 
 const GROUP_OPTIONS: { value: GroupMode; label: string }[] = [
   { value: 'none',    label: '平铺' },
-  { value: 'source',  label: '按来源' },
-  { value: 'keyword', label: '按关键词' },
-  { value: 'score',   label: '按评分' },
-  { value: 'time',    label: '按时间' },
+  { value: 'source',  label: '来源' },
+  { value: 'keyword', label: '关键词' },
+  { value: 'score',   label: '评分' },
+  { value: 'time',    label: '时间' },
 ];
 
 const PAGE_SIZES = [10, 20, 50, 100];
@@ -64,62 +64,48 @@ export default function HomePage() {
   const [hotspots, setHotspots] = useState<Hotspot[]>([]);
   const [keywords, setKeywords] = useState<Keyword[]>([]);
   const [loading, setLoading] = useState(true);
-  const [cardFilter, setCardFilter] = useState<CardFilter>('all');
-  const [sourceFilter, setSourceFilter] = useState<SourceType | 'all'>('all');
-  const [selectedKeywordIds, setSelectedKeywordIds] = useState<number[]>([]);
   const [search, setSearch] = useState('');
   const [stats, setStats] = useState({ total: 0, today: 0, urgent: 0, keywords: 0, filtered: 0 });
   const [toast, setToast] = useState<{ title: string; score: number } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { notifications } = useSocket();
 
-  // === 新增功能状态 ===
-  // 1. 排序
+  // --- 统一筛选状态 ---
+  const [sourceFilter, setSourceFilter] = useState<SourceType | 'all'>('all');
   const [sortBy, setSortBy] = useState<SortField>('score');
   const [sortAsc, setSortAsc] = useState(false);
-
-  // 2. 时间范围
   const [timeRange, setTimeRange] = useState<TimeRange>('all');
+  const [timeField, setTimeField] = useState<TimeField>('discovered_at');
   const [customSince, setCustomSince] = useState('');
   const [customUntil, setCustomUntil] = useState('');
-
-  // 3. 评分区间
   const [scoreMin, setScoreMin] = useState(0);
   const [scoreMax, setScoreMax] = useState(100);
-
-  // 4. 关键词多选 — 使用 selectedKeywordIds
-
-  // 5. 分组
+  const [selectedKeywordIds, setSelectedKeywordIds] = useState<number[]>([]);
   const [groupMode, setGroupMode] = useState<GroupMode>('none');
-
-  // 6. 分页
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(60);
 
-  // 高级筛选面板是否展开
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  // --- UI 状态 ---
+  const [openDropdown, setOpenDropdown] = useState<FilterDropdown>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // 点击外部关闭下拉
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpenDropdown(null);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
 
   const fetchHotspots = useCallback(async () => {
     try {
       const params = new URLSearchParams();
 
-      // 卡片维度过滤
-      if (cardFilter === 'today') {
-        const d = new Date(); d.setHours(0, 0, 0, 0);
-        params.set('since', d.toISOString());
-      } else if (cardFilter === 'urgent') {
-        params.set('min_score', '80');
-      } else if (cardFilter === 'keyword' && selectedKeywordIds.length > 0) {
-        params.set('keyword_id', selectedKeywordIds.join(','));
-      }
-
-      // 来源
       if (sourceFilter !== 'all') params.set('source_type', sourceFilter);
-
-      // 全文搜索
       if (search.trim()) params.set('search', search.trim());
-
-      // --- 高级筛选 ---
 
       // 排序
       params.set('sort_by', sortBy);
@@ -134,12 +120,15 @@ export default function HomePage() {
           params.set('time_range', timeRange);
         }
       }
+      params.set('time_field', timeField);
 
-      // 评分区间（如果非默认）
-      const scorePresetActive = SCORE_PRESETS.some(p => p.min === scoreMin && p.max === scoreMax);
-      if (!scorePresetActive || !(scoreMin === 0 && scoreMax === 100)) {
-        if (scoreMin > 0) params.set('min_score', String(scoreMin));
-        if (scoreMax < 100) params.set('max_score', String(scoreMax));
+      // 评分
+      if (scoreMin > 0) params.set('min_score', String(scoreMin));
+      if (scoreMax < 100) params.set('max_score', String(scoreMax));
+
+      // 关键词
+      if (selectedKeywordIds.length > 0) {
+        params.set('keyword_id', selectedKeywordIds.join(','));
       }
 
       // 分页
@@ -157,7 +146,7 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
-  }, [cardFilter, sourceFilter, selectedKeywordIds, search, sortBy, sortAsc, timeRange, customSince, customUntil, scoreMin, scoreMax, page, pageSize]);
+  }, [sourceFilter, search, sortBy, sortAsc, timeRange, timeField, customSince, customUntil, scoreMin, scoreMax, selectedKeywordIds, page, pageSize]);
 
   useEffect(() => {
     fetchHotspots();
@@ -180,66 +169,110 @@ export default function HomePage() {
     }
   }, [notifications, fetchHotspots]);
 
-  function handleCardFilter(f: CardFilter) {
-    setCardFilter(f);
-    setSearch('');
-    setPage(1);
-    if (f !== 'keyword') setSelectedKeywordIds([]);
-    else if (keywords.length > 0) setSelectedKeywordIds([keywords[0].id]);
+  // --- 筛选辅助 ---
+
+  /** 获取某个筛选维度的展示文本 */
+  function getSourceLabel(): string {
+    if (sourceFilter === 'all') return '全部来源';
+    const s = SOURCES.find(s => s.value === sourceFilter);
+    return s ? s.label : sourceFilter;
   }
 
-  function toggleKeyword(id: number) {
-    setSelectedKeywordIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
+  function getTimeLabel(): string {
+    if (timeRange === 'all') return '全部时间';
+    const t = TIME_OPTIONS.find(t => t.value === timeRange);
+    if (t) return t.label;
+    if (timeRange === 'custom') return '自定义';
+    return timeRange;
+  }
+
+  function getScoreLabel(): string {
+    const preset = SCORE_PRESETS.find(p => p.min === scoreMin && p.max === scoreMax);
+    if (preset) return preset.label;
+    return `${scoreMin}-${scoreMax}`;
+  }
+
+  function getKeywordLabel(): string {
+    if (selectedKeywordIds.length === 0) return '全部关键词';
+    if (selectedKeywordIds.length === 1) {
+      const kw = keywords.find(k => k.id === selectedKeywordIds[0]);
+      return kw ? `#${kw.keyword}` : '1个关键词';
+    }
+    return `已选${selectedKeywordIds.length}个`;
+  }
+
+  function getSortLabel(): string {
+    const s = SORT_OPTIONS.find(s => s.value === sortBy);
+    return s ? `${s.label} ${sortAsc ? '↑' : '↓'}` : 'AI 评分 ↓';
+  }
+
+  /** 切换 dropdown */
+  function toggleDropdown(d: FilterDropdown) {
+    setOpenDropdown(prev => prev === d ? null : d);
+  }
+
+  /** 通用设置函数：设置值 + 重置页码 + 关闭下拉 */
+  function setAndRefresh<T>(setter: (val: T) => void, value: T) {
+    setter(value);
     setPage(1);
   }
 
-  function handleScorePreset(min: number, max: number) {
-    setScoreMin(min);
-    setScoreMax(max);
+  function applyFilter() {
+    setOpenDropdown(null);
     setPage(1);
+    setLoading(true);
+    // fetchHotspots will be called by the useEffect dependency
   }
 
-  function handleTimeRange(tr: TimeRange) {
-    setTimeRange(tr);
-    setPage(1);
-  }
-
-  const totalPages = Math.ceil((stats.filtered || hotspots.length) / pageSize);
-
-  const keywordMap = Object.fromEntries(keywords.map(k => [k.id, k.keyword]));
-
-  const activeFilters = [
-    cardFilter !== 'all',
-    sourceFilter !== 'all',
-    search.trim().length > 0,
-    sortBy !== 'score' || sortAsc,
-    timeRange !== 'all',
-    !(scoreMin === 0 && scoreMax === 100),
-    groupMode !== 'none',
-  ].filter(Boolean).length;
-
-  function resetAllFilters() {
-    setCardFilter('all');
+  // --- 重置 ---
+  function resetAll() {
     setSourceFilter('all');
-    setSearch('');
-    setSelectedKeywordIds([]);
     setSortBy('score');
     setSortAsc(false);
     setTimeRange('all');
+    setTimeField('discovered_at');
     setCustomSince('');
     setCustomUntil('');
     setScoreMin(0);
     setScoreMax(100);
+    setSelectedKeywordIds([]);
     setGroupMode('none');
+    setSearch('');
     setPage(1);
+    setPageSize(60);
+  }
+
+  // --- 分页 ---
+  const totalPages = Math.ceil((stats.filtered || hotspots.length) / pageSize);
+
+  // --- 关键词 map ---
+  const keywordMap = Object.fromEntries(keywords.map(k => [k.id, k.keyword]));
+
+  // --- 筛选条件标签 ---
+  const filterTags: { key: string; label: string; onRemove: () => void }[] = [];
+
+  if (sourceFilter !== 'all') {
+    filterTags.push({ key: 'source', label: `来源:${getSourceLabel()}`, onRemove: () => { setSourceFilter('all'); setPage(1); } });
+  }
+  if (timeRange !== 'all') {
+    filterTags.push({ key: 'time', label: `时间:${getTimeLabel()}`, onRemove: () => { setTimeRange('all'); setPage(1); } });
+  }
+  if (!(scoreMin === 0 && scoreMax === 100)) {
+    filterTags.push({ key: 'score', label: `评分:${scoreMin}-${scoreMax}`, onRemove: () => { setScoreMin(0); setScoreMax(100); setPage(1); } });
+  }
+  if (selectedKeywordIds.length > 0) {
+    filterTags.push({ key: 'keyword', label: `关键词:${selectedKeywordIds.length}个`, onRemove: () => { setSelectedKeywordIds([]); setPage(1); } });
+  }
+  if (search.trim()) {
+    filterTags.push({ key: 'search', label: `搜索:"${search}"`, onRemove: () => { setSearch(''); setPage(1); } });
+  }
+  if (sortBy !== 'score' || sortAsc) {
+    filterTags.push({ key: 'sort', label: `排序:${getSortLabel()}`, onRemove: () => { setSortBy('score'); setSortAsc(false); setPage(1); } });
   }
 
   // --- 分组渲染 ---
   function getGroupedHotspots(): Record<string, Hotspot[]> {
     if (groupMode === 'none') return { '': hotspots };
-
     const groups: Record<string, Hotspot[]> = {};
     for (const h of hotspots) {
       let key = '';
@@ -255,7 +288,7 @@ export default function HomePage() {
           else if (h.ai_score >= 60) key = '中等 (60-79)';
           else key = '普通 (0-59)';
           break;
-        case 'time':
+        case 'time': {
           const d = new Date(h.discovered_at);
           const now = new Date();
           const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -264,6 +297,7 @@ export default function HomePage() {
           else if (d >= yesterdayStart) key = '昨天';
           else key = '更早';
           break;
+        }
       }
       if (!groups[key]) groups[key] = [];
       groups[key].push(h);
@@ -281,8 +315,7 @@ export default function HomePage() {
       {/* Toast */}
       {toast && (
         <div className="fixed top-16 right-4 z-50 max-w-xs animate-float pointer-events-none">
-          <div className={`border rounded-lg p-3 shadow-lg bg-bg-card
-            ${toast.score >= 80 ? 'border-neon-yellow/50' : 'border-neon-cyan/40'}`}>
+          <div className={`border rounded-lg p-3 shadow-lg bg-bg-card ${toast.score >= 80 ? 'border-neon-yellow/50' : 'border-neon-cyan/40'}`}>
             <div className="flex items-start gap-2">
               <span className={toast.score >= 80 ? 'text-neon-yellow' : 'text-neon-cyan'}>
                 {toast.score >= 80 ? '⚡' : '◈'}
@@ -307,247 +340,299 @@ export default function HomePage() {
           <p className="text-text-dim text-xs mt-0.5 font-mono">AI-POWERED TREND RADAR // REAL-TIME</p>
         </div>
 
-        {/* 统计卡片 */}
+        {/* 统计卡片（仅展示，不可点击） */}
         <div className="grid grid-cols-4 gap-2 mb-4">
           {[
-            { label: '总热点',   value: stats.total,    color: 'text-neon-cyan',    f: 'all' as CardFilter,     desc: '全部数据' },
-            { label: '今日热点', value: stats.today,    color: 'text-neon-green',   f: 'today' as CardFilter,   desc: '今天新增' },
-            { label: '紧急热点', value: stats.urgent,   color: 'text-neon-yellow',  f: 'urgent' as CardFilter,  desc: '高等级' },
-            { label: '监控词',   value: stats.keywords, color: 'text-neon-magenta', f: 'keyword' as CardFilter, desc: '活跃中' },
+            { label: '总热点',   value: stats.total,    color: 'text-neon-cyan' },
+            { label: '今日热点', value: stats.today,    color: 'text-neon-green' },
+            { label: '紧急热点', value: stats.urgent,   color: 'text-neon-yellow' },
+            { label: '监控词',   value: stats.keywords, color: 'text-neon-magenta' },
           ].map((s) => (
-            <button key={s.f} onClick={() => handleCardFilter(s.f)}
-              className={`relative bg-bg-card border rounded-lg p-3 text-center transition-all duration-200 cursor-pointer
-                ${cardFilter === s.f ? 'border-white/25 shadow-[0_0_15px_rgba(0,245,255,0.08)]' : 'border-white/5 hover:border-white/12'}`}
+            <div key={s.label}
+              className="bg-bg-card border border-white/5 rounded-lg p-3 text-center"
             >
               <div className={`text-2xl font-display font-bold ${s.color}`}>{s.value}</div>
               <div className="text-[10px] text-text-muted uppercase mt-0.5 tracking-wider">{s.label}</div>
-              <div className="text-[9px] text-text-dim mt-0.5">{s.desc}</div>
-              {cardFilter === s.f && (
-                <div className={`absolute bottom-0 left-1/2 -translate-x-1/2 w-10 h-0.5 rounded-full ${s.color.replace('text-', 'bg-')}`} />
-              )}
-            </button>
+            </div>
           ))}
         </div>
 
-        {/* 操作栏：来源标签 + 搜索 + 高级筛选切换 */}
-        <div className="flex items-center justify-between gap-3 mb-3 border-b border-white/5 pb-3 flex-wrap">
-          {/* 来源标签 */}
-          <div className="flex items-center gap-1 flex-wrap">
-            {SOURCE_FILTERS.map((s) => (
-              <button key={s.value} onClick={() => { setSourceFilter(s.value); setPage(1); }}
-                className={`px-2.5 py-1 text-xs font-mono rounded transition-all cursor-pointer flex items-center gap-1
-                  ${sourceFilter === s.value
-                    ? 'bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/30'
-                    : 'text-text-muted hover:text-text-primary hover:bg-white/5 border border-transparent'
-                  }`}
-              >
-                <span>{s.icon}</span>
-                <span className="hidden sm:inline">{s.label}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* 搜索 & 高级切换 */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className={`px-2 py-1 text-[10px] font-mono rounded border transition-all cursor-pointer
-                ${showAdvanced
-                  ? 'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/30'
-                  : 'text-text-muted border-white/10 hover:border-white/20'
-                }`}
-            >
-              ⚙ 筛选 {showAdvanced ? '▲' : '▼'}
-            </button>
-            {activeFilters > 0 && (
-              <button onClick={resetAllFilters}
-                className="text-[10px] font-mono text-neon-red/70 hover:text-neon-red border border-neon-red/20 hover:border-neon-red/40 px-2 py-1 rounded transition-all cursor-pointer">
-                重置 ({activeFilters})
-              </button>
-            )}
-            <div className="relative">
-              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-dim text-xs">🔍</span>
+        {/* === 统一筛选栏 === */}
+        <div ref={dropdownRef} className="relative mb-3">
+          <div className="flex items-center gap-1.5 flex-wrap border-b border-white/5 pb-3">
+            {/* 搜索框 */}
+            <div className="relative flex-1 min-w-[120px] max-w-[220px]">
+              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-text-dim text-xs">🔍</span>
               <input type="text" value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                placeholder="搜索热点..."
-                className="pl-7 pr-7 py-1.5 text-xs font-mono bg-bg-secondary border border-white/10 rounded
+                placeholder="搜索标题/摘要..."
+                className="w-full pl-7 pr-6 py-1.5 text-xs font-mono bg-bg-secondary border border-white/10 rounded
                   text-text-primary placeholder:text-text-dim
-                  focus:outline-none focus:border-neon-cyan/40 focus:shadow-[0_0_8px_rgba(0,245,255,0.15)]
-                  transition-all w-40"
+                  focus:outline-none focus:border-neon-cyan/40 transition-all"
               />
               {search && (
-                <button onClick={() => setSearch('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-text-dim hover:text-text-primary text-xs cursor-pointer">✕</button>
+                <button onClick={() => { setSearch(''); setPage(1); }}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-text-dim hover:text-text-primary text-xs cursor-pointer">✕</button>
               )}
             </div>
-          </div>
-        </div>
 
-        {/* ===== 高级筛选面板 ===== */}
-        {showAdvanced && (
-          <CyberCard className="p-4 mb-4 space-y-4">
-            {/* 第1行：排序 + 分组 */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {/* 排序 */}
-              <div>
-                <div className="text-[10px] text-text-dim font-mono mb-1.5 tracking-wider uppercase">排序</div>
-                <div className="flex gap-1">
-                  <select value={sortBy} onChange={(e) => { setSortBy(e.target.value as SortField); setPage(1); }}
-                    className="flex-1 px-2 py-1 text-xs font-mono bg-bg-secondary border border-white/10 rounded
-                      text-text-primary focus:outline-none focus:border-neon-cyan/40 cursor-pointer">
-                    {SORT_OPTIONS.map(o => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                  <button onClick={() => { setSortAsc(!sortAsc); setPage(1); }}
-                    className={`px-2 py-1 text-xs border rounded cursor-pointer transition-all
-                      ${sortAsc ? 'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/30' : 'text-text-muted border-white/10 hover:border-white/20'}`}
-                    title={sortAsc ? '升序 ↑' : '降序 ↓'}
-                  >
-                    {sortAsc ? '↑ 升序' : '↓ 降序'}
-                  </button>
-                </div>
-              </div>
-
-              {/* 分组 */}
-              <div>
-                <div className="text-[10px] text-text-dim font-mono mb-1.5 tracking-wider uppercase">分组查看</div>
-                <div className="flex gap-1 flex-wrap">
-                  {GROUP_OPTIONS.map(g => (
-                    <button key={g.value} onClick={() => setGroupMode(g.value)}
-                      className={`px-2 py-1 text-[10px] font-mono rounded border transition-all cursor-pointer
-                        ${groupMode === g.value
-                          ? 'bg-neon-magenta/10 text-neon-magenta border-neon-magenta/30'
-                          : 'text-text-muted border-white/10 hover:border-white/20'
-                        }`}
-                    >
-                      {g.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 每页条数 */}
-              <div>
-                <div className="text-[10px] text-text-dim font-mono mb-1.5 tracking-wider uppercase">每页条数</div>
-                <div className="flex gap-1">
-                  {PAGE_SIZES.map(s => (
-                    <button key={s} onClick={() => { setPageSize(s); setPage(1); }}
-                      className={`px-2 py-1 text-[10px] font-mono rounded border transition-all cursor-pointer
-                        ${pageSize === s
-                          ? 'bg-neon-green/10 text-neon-green border-neon-green/30'
-                          : 'text-text-muted border-white/10 hover:border-white/20'
-                        }`}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 结果计数 */}
-              <div className="flex items-end">
-                <div className="text-xs text-text-dim font-mono">
-                  匹配结果：<span className="text-neon-cyan">{stats.filtered}</span> / {stats.total}
-                </div>
-              </div>
-            </div>
-
-            {/* 第2行：时间范围 + 评分区间 */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* 时间范围 */}
-              <div>
-                <div className="text-[10px] text-text-dim font-mono mb-1.5 tracking-wider uppercase">时间范围</div>
-                <div className="flex gap-1 flex-wrap mb-2">
-                  {TIME_OPTIONS.map(t => (
-                    <button key={t.value} onClick={() => handleTimeRange(t.value)}
-                      className={`px-2 py-1 text-[10px] font-mono rounded border transition-all cursor-pointer
-                        ${timeRange === t.value
-                          ? 'bg-neon-yellow/10 text-neon-yellow border-neon-yellow/30'
-                          : 'text-text-muted border-white/10 hover:border-white/20'
-                        }`}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-                {timeRange === 'custom' && (
-                  <div className="flex gap-2 items-center">
-                    <input type="datetime-local" value={customSince}
-                      onChange={(e) => { setCustomSince(e.target.value); setPage(1); }}
-                      className="flex-1 px-2 py-1 text-[10px] font-mono bg-bg-secondary border border-white/10 rounded
-                        text-text-primary focus:outline-none focus:border-neon-cyan/40"
-                    />
-                    <span className="text-text-dim text-[10px]">~</span>
-                    <input type="datetime-local" value={customUntil}
-                      onChange={(e) => { setCustomUntil(e.target.value); setPage(1); }}
-                      className="flex-1 px-2 py-1 text-[10px] font-mono bg-bg-secondary border border-white/10 rounded
-                        text-text-primary focus:outline-none focus:border-neon-cyan/40"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* 评分区间 */}
-              <div>
-                <div className="text-[10px] text-text-dim font-mono mb-1.5 tracking-wider uppercase">
-                  AI 评分区间
-                  <span className="ml-2 text-neon-cyan">{scoreMin} - {scoreMax}</span>
-                </div>
-                <div className="flex gap-1 flex-wrap mb-2">
-                  {SCORE_PRESETS.map(p => (
-                    <button key={p.label} onClick={() => handleScorePreset(p.min, p.max)}
-                      className={`px-2 py-1 text-[10px] font-mono rounded border transition-all cursor-pointer
-                        ${scoreMin === p.min && scoreMax === p.max
-                          ? 'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/30'
-                          : 'text-text-muted border-white/10 hover:border-white/20'
-                        }`}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex gap-2 items-center">
-                  <input type="range" min={0} max={100} value={scoreMin}
-                    onChange={(e) => { const v = Math.min(Number(e.target.value), scoreMax); setScoreMin(v); setPage(1); }}
-                    className="flex-1 h-1.5 accent-neon-cyan cursor-pointer"
-                  />
-                  <span className="text-text-dim text-[10px] font-mono w-8 text-right">{scoreMin}</span>
-                  <span className="text-text-dim text-[10px]">-</span>
-                  <span className="text-text-dim text-[10px] font-mono w-8">{scoreMax}</span>
-                  <input type="range" min={0} max={100} value={scoreMax}
-                    onChange={(e) => { const v = Math.max(Number(e.target.value), scoreMin); setScoreMax(v); setPage(1); }}
-                    className="flex-1 h-1.5 accent-neon-cyan cursor-pointer"
-                  />
-                </div>
-              </div>
-            </div>
-          </CyberCard>
-        )}
-
-        {/* 监控词子筛选（多选模式） */}
-        {keywords.length > 0 && (
-          <div className="flex gap-1.5 mb-4 flex-wrap items-center">
-            <span className="text-[10px] text-text-dim font-mono mr-1 uppercase">关键词:</span>
-            {keywords.map((kw) => (
-              <button key={kw.id} onClick={() => toggleKeyword(kw.id)}
-                className={`px-2.5 py-1 text-xs font-mono rounded transition-all cursor-pointer
-                  ${selectedKeywordIds.includes(kw.id)
-                    ? 'bg-neon-magenta/15 text-neon-magenta border border-neon-magenta/40 shadow-[0_0_8px_rgba(255,0,255,0.08)]'
-                    : 'text-text-muted border border-white/10 hover:border-white/20'
-                  }`}
+            {/* --- 来源下拉 --- */}
+            <div className="relative">
+              <button onClick={() => toggleDropdown('source')}
+                className={`px-2.5 py-1.5 text-[11px] font-mono border rounded cursor-pointer transition-all whitespace-nowrap
+                  ${sourceFilter !== 'all'
+                    ? 'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/30'
+                    : 'text-text-muted border-white/10 hover:border-white/30 hover:text-text-primary'}`}
               >
-                #{kw.keyword}
+                来源: {getSourceLabel()} ▾
               </button>
-            ))}
-            {selectedKeywordIds.length > 0 && (
-              <button onClick={() => setSelectedKeywordIds([])}
-                className="px-2 py-1 text-[10px] font-mono text-neon-red/70 hover:text-neon-red border border-neon-red/20 hover:border-neon-red/40 rounded transition-all cursor-pointer">
-                清除
+              {openDropdown === 'source' && (
+                <div className="absolute top-full left-0 mt-1 z-50 bg-bg-card border border-white/10 rounded-lg shadow-xl p-1.5 min-w-[130px]">
+                  <button onClick={() => { setSourceFilter('all'); applyFilter(); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs font-mono rounded cursor-pointer transition-all
+                      ${sourceFilter === 'all' ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-text-muted hover:text-text-primary hover:bg-white/5'}`}
+                  >全部来源</button>
+                  {SOURCES.map(s => (
+                    <button key={s.value} onClick={() => { setSourceFilter(s.value); applyFilter(); }}
+                      className={`w-full text-left px-3 py-1.5 text-xs font-mono rounded cursor-pointer transition-all flex items-center gap-1.5
+                        ${sourceFilter === s.value ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-text-muted hover:text-text-primary hover:bg-white/5'}`}
+                    >
+                      <span>{s.icon}</span> {s.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* --- 时间下拉 --- */}
+            <div className="relative">
+              <button onClick={() => toggleDropdown('time')}
+                className={`px-2.5 py-1.5 text-[11px] font-mono border rounded cursor-pointer transition-all whitespace-nowrap
+                  ${timeRange !== 'all'
+                    ? 'bg-neon-yellow/10 text-neon-yellow border-neon-yellow/30'
+                    : 'text-text-muted border-white/10 hover:border-white/30 hover:text-text-primary'}`}
+              >
+                时间: {getTimeLabel()} ▾
               </button>
+              {openDropdown === 'time' && (
+                <div className="absolute top-full left-0 mt-1 z-50 bg-bg-card border border-white/10 rounded-lg shadow-xl p-3 min-w-[260px]">
+                  <div className="flex gap-1 flex-wrap mb-2">
+                    {TIME_OPTIONS.map(t => (
+                      <button key={t.value} onClick={() => { setTimeRange(t.value); setPage(1); }}
+                        className={`px-2 py-1 text-[10px] font-mono rounded border cursor-pointer transition-all
+                          ${timeRange === t.value
+                            ? 'bg-neon-yellow/10 text-neon-yellow border-neon-yellow/30'
+                            : 'text-text-muted border-white/10 hover:border-white/20'}`}
+                      >{t.label}</button>
+                    ))}
+                    <button onClick={() => { setTimeRange('custom'); setPage(1); }}
+                      className={`px-2 py-1 text-[10px] font-mono rounded border cursor-pointer transition-all
+                        ${timeRange === 'custom'
+                          ? 'bg-neon-yellow/10 text-neon-yellow border-neon-yellow/30'
+                          : 'text-text-muted border-white/10 hover:border-white/20'}`}
+                    >自定义</button>
+                  </div>
+                  {/* 时间字段切换 */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[10px] text-text-dim font-mono">依据:</span>
+                    <button onClick={() => { setTimeField('discovered_at'); setPage(1); }}
+                      className={`px-2 py-0.5 text-[10px] font-mono rounded border cursor-pointer transition-all
+                        ${timeField === 'discovered_at'
+                          ? 'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/30'
+                          : 'text-text-muted border-white/10 hover:border-white/20'}`}
+                    >发现时间</button>
+                    <button onClick={() => { setTimeField('published_at'); setPage(1); }}
+                      className={`px-2 py-0.5 text-[10px] font-mono rounded border cursor-pointer transition-all
+                        ${timeField === 'published_at'
+                          ? 'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/30'
+                          : 'text-text-muted border-white/10 hover:border-white/20'}`}
+                    >发布时间</button>
+                  </div>
+                  {timeRange === 'custom' && (
+                    <div className="flex gap-2 items-center">
+                      <input type="datetime-local" value={customSince}
+                        onChange={(e) => { setCustomSince(e.target.value); setPage(1); }}
+                        className="flex-1 px-2 py-1 text-[10px] font-mono bg-bg-secondary border border-white/10 rounded
+                          text-text-primary focus:outline-none focus:border-neon-cyan/40"
+                      />
+                      <span className="text-text-dim text-[10px]">~</span>
+                      <input type="datetime-local" value={customUntil}
+                        onChange={(e) => { setCustomUntil(e.target.value); setPage(1); }}
+                        className="flex-1 px-2 py-1 text-[10px] font-mono bg-bg-secondary border border-white/10 rounded
+                          text-text-primary focus:outline-none focus:border-neon-cyan/40"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* --- 评分下拉 --- */}
+            <div className="relative">
+              <button onClick={() => toggleDropdown('score')}
+                className={`px-2.5 py-1.5 text-[11px] font-mono border rounded cursor-pointer transition-all whitespace-nowrap
+                  ${!(scoreMin === 0 && scoreMax === 100)
+                    ? 'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/30'
+                    : 'text-text-muted border-white/10 hover:border-white/30 hover:text-text-primary'}`}
+              >
+                评分: {getScoreLabel()} ▾
+              </button>
+              {openDropdown === 'score' && (
+                <div className="absolute top-full left-0 mt-1 z-50 bg-bg-card border border-white/10 rounded-lg shadow-xl p-3 min-w-[230px]">
+                  <div className="flex gap-1 flex-wrap mb-3">
+                    {SCORE_PRESETS.map(p => (
+                      <button key={p.label} onClick={() => { setScoreMin(p.min); setScoreMax(p.max); setPage(1); }}
+                        className={`px-2 py-1 text-[10px] font-mono rounded border cursor-pointer transition-all
+                          ${scoreMin === p.min && scoreMax === p.max
+                            ? 'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/30'
+                            : 'text-text-muted border-white/10 hover:border-white/20'}`}
+                      >{p.label}</button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <input type="range" min={0} max={100} value={scoreMin}
+                      onChange={(e) => { const v = Math.min(Number(e.target.value), scoreMax); setScoreMin(v); setPage(1); }}
+                      className="flex-1 h-1.5 accent-neon-cyan cursor-pointer"
+                    />
+                    <span className="text-text-dim text-[10px] font-mono w-8 text-right">{scoreMin}</span>
+                  </div>
+                  <div className="flex gap-2 items-center mt-1">
+                    <input type="range" min={0} max={100} value={scoreMax}
+                      onChange={(e) => { const v = Math.max(Number(e.target.value), scoreMin); setScoreMax(v); setPage(1); }}
+                      className="flex-1 h-1.5 accent-neon-cyan cursor-pointer"
+                    />
+                    <span className="text-text-dim text-[10px] font-mono w-8 text-right">{scoreMax}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* --- 关键词下拉 --- */}
+            <div className="relative">
+              <button onClick={() => toggleDropdown('keyword')}
+                className={`px-2.5 py-1.5 text-[11px] font-mono border rounded cursor-pointer transition-all whitespace-nowrap
+                  ${selectedKeywordIds.length > 0
+                    ? 'bg-neon-magenta/10 text-neon-magenta border-neon-magenta/30'
+                    : 'text-text-muted border-white/10 hover:border-white/30 hover:text-text-primary'}`}
+              >
+                关键词: {getKeywordLabel()} ▾
+              </button>
+              {openDropdown === 'keyword' && (
+                <div className="absolute top-full left-0 mt-1 z-50 bg-bg-card border border-white/10 rounded-lg shadow-xl p-2 min-w-[180px] max-h-[250px] overflow-y-auto">
+                  {keywords.length === 0 && (
+                    <div className="text-text-dim text-[10px] font-mono p-2 text-center">暂无关键词</div>
+                  )}
+                  {keywords.map(kw => (
+                    <label key={kw.id}
+                      className="flex items-center gap-2 px-2 py-1.5 text-xs font-mono rounded cursor-pointer
+                        hover:bg-white/5 transition-all text-text-muted hover:text-text-primary"
+                    >
+                      <input type="checkbox" checked={selectedKeywordIds.includes(kw.id)}
+                        onChange={() => {
+                          setSelectedKeywordIds(prev =>
+                            prev.includes(kw.id) ? prev.filter(x => x !== kw.id) : [...prev, kw.id]
+                          );
+                          setPage(1);
+                        }}
+                        className="accent-neon-magenta cursor-pointer"
+                      />
+                      #{kw.keyword}
+                    </label>
+                  ))}
+                  {selectedKeywordIds.length > 0 && (
+                    <button onClick={() => { setSelectedKeywordIds([]); setPage(1); }}
+                      className="w-full text-left px-2 py-1 mt-1 text-[10px] font-mono text-neon-red/70 hover:text-neon-red rounded cursor-pointer transition-all"
+                    >清除全部</button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* --- 排序下拉 --- */}
+            <div className="relative">
+              <button onClick={() => toggleDropdown('sort')}
+                className={`px-2.5 py-1.5 text-[11px] font-mono border rounded cursor-pointer transition-all whitespace-nowrap
+                  text-text-muted border-white/10 hover:border-white/30 hover:text-text-primary`}
+              >
+                {getSortLabel()} ▾
+              </button>
+              {openDropdown === 'sort' && (
+                <div className="absolute top-full left-0 mt-1 z-50 bg-bg-card border border-white/10 rounded-lg shadow-xl p-1.5 min-w-[130px]">
+                  {SORT_OPTIONS.map(s => (
+                    <button key={s.value} onClick={() => { setSortBy(s.value); applyFilter(); }}
+                      className={`w-full text-left px-3 py-1.5 text-xs font-mono rounded cursor-pointer transition-all
+                        ${sortBy === s.value ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-text-muted hover:text-text-primary hover:bg-white/5'}`}
+                    >{s.label}</button>
+                  ))}
+                  <div className="border-t border-white/5 mt-1 pt-1">
+                    <button onClick={() => { setSortAsc(!sortAsc); setPage(1); }}
+                      className={`w-full text-left px-3 py-1.5 text-xs font-mono rounded cursor-pointer transition-all
+                        ${sortAsc ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-text-muted hover:text-text-primary hover:bg-white/5'}`}
+                    >
+                      {sortAsc ? '↑ 升序' : '↓ 降序'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 分组按钮组 */}
+            <div className="flex items-center gap-0.5 border-l border-white/10 pl-2 ml-1">
+              <span className="text-[10px] text-text-dim font-mono mr-1 hidden sm:inline">分组</span>
+              {GROUP_OPTIONS.map(g => (
+                <button key={g.value} onClick={() => setGroupMode(g.value)}
+                  className={`px-1.5 py-1.5 text-[10px] font-mono rounded border cursor-pointer transition-all
+                    ${groupMode === g.value
+                      ? 'bg-neon-magenta/10 text-neon-magenta border-neon-magenta/30'
+                      : 'text-text-muted border-white/10 hover:border-white/20 hover:text-text-primary'}`}
+                >{g.label}</button>
+              ))}
+            </div>
+
+            {/* 重置 */}
+            {(sourceFilter !== 'all' || timeRange !== 'all' || !(scoreMin === 0 && scoreMax === 100) || selectedKeywordIds.length > 0 || search.trim() || sortBy !== 'score' || sortAsc) && (
+              <button onClick={resetAll}
+                className="px-2 py-1.5 text-[10px] font-mono text-neon-red/70 hover:text-neon-red border border-neon-red/20 hover:border-neon-red/40 rounded cursor-pointer transition-all whitespace-nowrap"
+              >清空 ✕</button>
             )}
           </div>
-        )}
+
+          {/* 筛选条件标签 */}
+          {filterTags.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap mt-2 pb-2">
+              <span className="text-[9px] text-text-dim font-mono uppercase tracking-wider">已选:</span>
+              {filterTags.map(tag => (
+                <span key={tag.key}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono
+                    bg-white/5 border border-white/10 rounded text-text-muted"
+                >
+                  {tag.label}
+                  <button onClick={tag.onRemove}
+                    className="text-text-dim hover:text-neon-red cursor-pointer transition-all ml-0.5"
+                  >✕</button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 每页条数 + 匹配结果计数 */}
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[10px] text-text-dim font-mono">
+            匹配: <span className="text-neon-cyan">{stats.filtered}</span> / {stats.total}
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-text-dim font-mono">每页</span>
+            {PAGE_SIZES.map(s => (
+              <button key={s} onClick={() => { setPageSize(s); setPage(1); }}
+                className={`px-1.5 py-0.5 text-[10px] font-mono rounded border cursor-pointer transition-all
+                  ${pageSize === s
+                    ? 'bg-neon-green/10 text-neon-green border-neon-green/30'
+                    : 'text-text-muted border-white/10 hover:border-white/20'}`}
+              >{s}</button>
+            ))}
+          </div>
+        </div>
 
         {/* 热点列表 */}
         {loading ? (
@@ -560,20 +645,15 @@ export default function HomePage() {
           <CyberCard className="text-center py-16">
             <div className="text-4xl mb-3 opacity-20">◈</div>
             <NeonText color="cyan" className="text-base">
-              {search ? `未找到"${search}"相关热点` :
-               cardFilter === 'urgent' ? '暂无紧急热点' :
-               cardFilter === 'today' ? '今日暂无热点' : '暂无热点数据'}
+              {search ? `未找到"${search}"相关热点` : '暂无热点数据，请先添加监控词并采集'}
             </NeonText>
             <p className="text-text-muted text-xs mt-2 font-mono">
-              {cardFilter === 'keyword' && keywords.length === 0
-                ? '前往「监控词」页面添加关键词'
-                : '点击导航栏「立即采集」开始监控'}
+              调整筛选条件或点击导航栏「立即采集」开始监控
             </p>
           </CyberCard>
         ) : groupMode === 'none' ? (
-          /* 平铺模式 */
           <div className="space-y-3">
-            {hotspots.map((h) => (
+            {hotspots.map(h => (
               <HotspotCard
                 key={h.id}
                 title={h.title}
@@ -589,19 +669,16 @@ export default function HomePage() {
             ))}
           </div>
         ) : (
-          /* 分组模式 */
           <div className="space-y-5">
             {Object.entries(grouped).map(([groupKey, items]) => (
               <div key={groupKey}>
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs font-mono font-bold text-neon-cyan tracking-wider uppercase">
-                    {groupKey}
-                  </span>
+                  <span className="text-xs font-mono font-bold text-neon-cyan tracking-wider uppercase">{groupKey}</span>
                   <span className="text-[10px] text-text-dim font-mono">({items.length})</span>
                   <div className="flex-1 h-px bg-white/5" />
                 </div>
                 <div className="space-y-2">
-                  {items.map((h) => (
+                  {items.map(h => (
                     <HotspotCard
                       key={h.id}
                       title={h.title}
@@ -631,51 +708,32 @@ export default function HomePage() {
               <button onClick={() => setPage(1)} disabled={page <= 1}
                 className="px-2 py-1 text-[10px] font-mono border border-white/10 rounded
                   text-text-muted hover:text-text-primary hover:border-white/20
-                  disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all">
-                首页
-              </button>
+                  disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all">首页</button>
               <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
                 className="px-2 py-1 text-[10px] font-mono border border-white/10 rounded
                   text-text-muted hover:text-text-primary hover:border-white/20
-                  disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all">
-                上一页
-              </button>
-              {/* 页码按钮 */}
+                  disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all">上一页</button>
               {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
-                let pageNum: number;
-                if (totalPages <= 7) {
-                  pageNum = i + 1;
-                } else if (page <= 4) {
-                  pageNum = i + 1;
-                } else if (page >= totalPages - 3) {
-                  pageNum = totalPages - 6 + i;
-                } else {
-                  pageNum = page - 3 + i;
-                }
+                let pn: number;
+                if (totalPages <= 7) { pn = i + 1; }
+                else if (page <= 4) { pn = i + 1; }
+                else if (page >= totalPages - 3) { pn = totalPages - 6 + i; }
+                else { pn = page - 3 + i; }
                 return (
-                  <button key={pageNum} onClick={() => setPage(pageNum)}
-                    className={`w-7 h-7 text-[10px] font-mono rounded border transition-all cursor-pointer
-                      ${pageNum === page
-                        ? 'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/30'
-                        : 'text-text-muted border-white/10 hover:border-white/20'
-                      }`}
-                  >
-                    {pageNum}
-                  </button>
+                  <button key={pn} onClick={() => setPage(pn)}
+                    className={`w-7 h-7 text-[10px] font-mono rounded border cursor-pointer transition-all
+                      ${pn === page ? 'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/30' : 'text-text-muted border-white/10 hover:border-white/20'}`}
+                  >{pn}</button>
                 );
               })}
               <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
                 className="px-2 py-1 text-[10px] font-mono border border-white/10 rounded
                   text-text-muted hover:text-text-primary hover:border-white/20
-                  disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all">
-                下一页
-              </button>
+                  disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all">下一页</button>
               <button onClick={() => setPage(totalPages)} disabled={page >= totalPages}
                 className="px-2 py-1 text-[10px] font-mono border border-white/10 rounded
                   text-text-muted hover:text-text-primary hover:border-white/20
-                  disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all">
-                末页
-              </button>
+                  disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all">末页</button>
             </div>
           </div>
         )}

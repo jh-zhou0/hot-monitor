@@ -20,9 +20,12 @@ export async function GET(req: NextRequest) {
 
   // 时间范围：time_range = '1h' | '6h' | '24h' | '3d' | '7d' | 'custom'
   // 自定义时使用 since / until 参数
+  // time_field: 'discovered_at' | 'published_at'
   const timeRange = searchParams.get('time_range');
   const since = searchParams.get('since');
   const until = searchParams.get('until');
+  const timeField = searchParams.get('time_field') || 'discovered_at';
+  const timeColumn = timeField === 'published_at' ? 'h.published_at' : 'h.discovered_at';
 
   // --- 排序参数 ---
   // sort_by: 'score' | 'discovered_at' | 'published_at' | 'source_type' | 'keyword_id'
@@ -73,11 +76,11 @@ export async function GET(req: NextRequest) {
     sql += ' AND h.keyword_id IN (SELECT id FROM keywords WHERE is_active = 1)';
   }
 
-  // 时间范围
+  // 时间范围（支持按 discovered_at 或 published_at）
   if (timeRange && timeRange !== 'all') {
     if (timeRange === 'custom') {
-      if (since) { sql += ' AND h.discovered_at >= ?'; params.push(since); }
-      if (until) { sql += ' AND h.discovered_at <= ?'; params.push(until); }
+      if (since) { sql += ` AND ${timeColumn} >= ?`; params.push(since); }
+      if (until) { sql += ` AND ${timeColumn} <= ?`; params.push(until); }
     } else {
       const unit = timeRange.slice(-1); // 'h' or 'd'
       const value = parseInt(timeRange);
@@ -87,7 +90,7 @@ export async function GET(req: NextRequest) {
       } else {
         now.setDate(now.getDate() - value);
       }
-      sql += ' AND h.discovered_at >= ?';
+      sql += ` AND ${timeColumn} >= ?`;
       params.push(now.toISOString());
     }
   }
