@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { getDb, getAll, saveDb } from '@/lib/db';
+import { getDb, getAll, getOne, saveDb } from '@/lib/db';
 import { aggregateSearch } from '@/lib/sources/aggregator';
 import { analyzeHotspots } from '@/lib/ai/analyzer';
 import { emitHotspot } from '@/lib/notifications/socket';
@@ -46,6 +46,18 @@ async function runMonitorCycle() {
         for (let i = 0; i < rawResults.length && i < analysis.length; i++) {
           const raw = rawResults[i];
           const ai = analysis[i];
+
+          // Skip if the same URL was already stored for this keyword
+          if (raw.url) {
+            const existing = getOne<{ id: number }>(
+              'SELECT id FROM hotspots WHERE source_url = ? AND keyword_id = ?',
+              [raw.url, kw.id]
+            );
+            if (existing) {
+              console.log(`[scheduler] Skipping duplicate: "${raw.title}" (URL already stored for keyword_id=${kw.id})`);
+              continue;
+            }
+          }
 
           db.run(
             `INSERT INTO hotspots (title, summary, source_type, source_url, source_author, raw_content, ai_score, ai_verified, ai_analysis, keyword_id, published_at)

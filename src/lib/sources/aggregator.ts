@@ -33,16 +33,35 @@ export async function aggregateSearch(keyword: string): Promise<RawSearchResult[
 }
 
 function deduplicateResults(results: RawSearchResult[]): RawSearchResult[] {
-  const seen = new Map<string, RawSearchResult>();
+  const seenByTitle = new Map<string, RawSearchResult>();
+  const seenByUrl = new Map<string, RawSearchResult>();
 
   for (const r of results) {
-    const key = normalizeForDedup(r.title);
-    if (!seen.has(key)) {
-      seen.set(key, r);
+    const titleKey = normalizeForDedup(r.title);
+    const urlKey = normalizeUrl(r.url);
+
+    const titleDuplicate = titleKey && seenByTitle.has(titleKey);
+    const urlDuplicate = urlKey && seenByUrl.has(urlKey);
+
+    // Skip if either title or URL already seen
+    if (titleDuplicate || urlDuplicate) {
+      continue;
     }
+
+    if (titleKey) seenByTitle.set(titleKey, r);
+    if (urlKey) seenByUrl.set(urlKey, r);
   }
 
-  return Array.from(seen.values());
+  // Merge: unique items from both maps
+  const resultMap = new Map<string, RawSearchResult>();
+  for (const r of seenByTitle.values()) {
+    resultMap.set(r.url, r);
+  }
+  for (const r of seenByUrl.values()) {
+    resultMap.set(r.url, r);
+  }
+
+  return Array.from(resultMap.values());
 }
 
 function normalizeForDedup(text: string): string {
@@ -50,6 +69,39 @@ function normalizeForDedup(text: string): string {
     .toLowerCase()
     .replace(/[^\w一-鿿]/g, '')
     .slice(0, 50);
+}
+
+/**
+ * Normalize a URL for deduplication purposes:
+ * - Lowercase
+ * - Remove protocol (http/https)
+ * - Remove trailing slash
+ * - Remove www. prefix
+ * - Remove tracking query params (utm_*, fbclid, etc.)
+ */
+function normalizeUrl(url: string): string {
+  try {
+    let normalized = url.toLowerCase().trim();
+
+    // Remove protocol
+    normalized = normalized.replace(/^https?:\/\//, '');
+
+    // Remove www. prefix
+    normalized = normalized.replace(/^www\./, '');
+
+    // Remove trailing slash
+    normalized = normalized.replace(/\/+$/, '');
+
+    // Remove tracking query parameters
+    normalized = normalized.replace(/[?&](utm_[^&=]+|fbclid|gclid|ref|source)=[^&]+/g, '');
+
+    // Remove fragments
+    normalized = normalized.replace(/#.*$/, '');
+
+    return normalized;
+  } catch {
+    return '';
+  }
 }
 
 function filterByDate(results: RawSearchResult[]): RawSearchResult[] {
