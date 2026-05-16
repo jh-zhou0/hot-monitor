@@ -486,9 +486,14 @@ export default function HomePage() {
         ) : (
           <div className="space-y-3">
             {hotspots.map(h => (
-              <HotspotCard key={h.id} title={h.title} summary={h.summary} sourceType={h.source_type}
-                sourceUrl={h.source_url} sourceAuthor={h.source_author} aiScore={h.ai_score}
-                aiVerified={h.ai_verified} discoveredAt={h.discovered_at}
+              <HotspotCard key={h.id} title={h.title} summary={h.summary}
+                rawContent={h.raw_content}
+                sourceType={h.source_type}
+                sourceUrl={h.source_url} sourceAuthor={h.source_author}
+                aiScore={h.ai_score} aiVerified={h.ai_verified}
+                aiAnalysis={h.ai_analysis}
+                publishedAt={h.published_at}
+                discoveredAt={h.discovered_at}
                 keyword={h.keyword_id ? keywordMap[h.keyword_id] : undefined} />
             ))}
           </div>
