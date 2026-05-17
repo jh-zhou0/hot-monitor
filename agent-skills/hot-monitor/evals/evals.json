@@ -1,0 +1,23 @@
+{
+  "skill_name": "hot-monitor",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "帮我用 hot-monitor 监控关键词 Cursor，跑一轮多源采集，分析后列出所有 ≥80 分的紧急热点，用 Markdown 简报回复（不要保存采集 JSON 到文件）。",
+      "expected_output": "执行 collect.py → 按 analysis-framework 分析 → 输出符合 report-template 的简报，含紧急区块",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "同时看一下 GPT-5 和 Claude 最近有什么 AI 热点，各采集一次，合并去重后给我一份分关键词的简报。",
+      "expected_output": "两次 collect.py，合并分析，分节简报",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "不配置 Twitter Key 的情况下采集 OpenAI，确认 Twitter 被跳过且其他来源仍有结果，并说明来源统计。",
+      "expected_output": "collect 成功，简报含来源统计，注明 twitter 跳过",
+      "files": []
+    }
+  ]
+}

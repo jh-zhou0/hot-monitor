@@ -132,6 +132,18 @@ docs/                       # 需求文档和技术方案
 | 微博 | 社交媒体 | 热搜榜 + 关键词搜索 |
 | Twitter/X | 社交媒体 | 需配置 `TWITTER_API_KEY` |
 
+## Agent Skills（自包含，无需启动 Web 服务）
+
+`agent-skills/hot-monitor/` 将热点监控能力封装为 Agent Skill：**不依赖**本项目的 Next.js 服务、SQLite 或 OpenRouter。Python 脚本负责 7 源采集与过滤，由 Claude 按 Skill 内 `references/analysis-framework.md` 完成分析与简报。
+
+```bash
+cd agent-skills/hot-monitor/scripts
+pip install -r requirements.txt
+python collect.py "Claude" --pretty   # 采集结果仅输出到 stdout（JSON）
+```
+
+安装到 Cursor：`cp -r agent-skills/hot-monitor ~/.cursor/skills/hot-monitor`。详见 `agent-skills/hot-monitor/SKILL.md`。
+
 ## 开发文档
 
 - [需求文档](docs/requirements.md)
