@@ -1,11 +1,11 @@
 # AI 热点监控系统
 
 一个由 AI 驱动的实时热点监控工具，帮助你第一时间发现 AI 领域的重大更新和热点事件。
-![alt text](assets/0b6308a7-dd66-472f-aed5-922c0fb05fd6.png) 
 
+![alt text](assets/1.png)
 
-
-![alt text](assets/5e79be9b-f8fd-4720-bf48-4f850d3d59d5.png)
+监控词
+![alt text](assets/2.png)
 
 ## 功能特性
 
@@ -136,33 +136,21 @@ docs/                       # 需求文档和技术方案
 
 `agent-skills/hot-monitor/` 将热点监控能力封装为 Agent Skill：**不依赖**本项目的 Next.js 服务、SQLite 或 OpenRouter。Python 脚本负责 7 源采集与过滤，由 Claude 按 Skill 内 `references/analysis-framework.md` 完成分析与简报。
 
-```bash
-cd agent-skills/hot-monitor/scripts
-pip install -r requirements.txt
-python collect.py "Claude" --pretty   # 采集结果仅输出到 stdout（JSON）
-```
+![alt text](assets/5.png)
 
-安装到 Cursor：`cp -r agent-skills/hot-monitor ~/.cursor/skills/hot-monitor`。详见 `agent-skills/hot-monitor/SKILL.md`。
+![alt text](assets/6.png)
 
 ## 开发文档
 
 - [需求文档](docs/requirements.md)
 - [技术方案](docs/technical-design.md)
 
-## TODO
-
-## 更多展示
-
-- 帖子的发布事件
-- 热点的抓取时间（被我们的项目抓取的时间）
-- 更多的互动数据（比如点赞、回复数、转发等等，有的话则展示）
-- AI分析相关性的理由，支持展开折叠、以及一键展开折叠所有帖子的相关性理由
-
+## TODO（可选）
 ### Query Expansion(查询扩展)
 
 AI提到要用基础文本匹配过滤，也就是说内容必须要包含关键词，可能就会导致有些相似的合理内容也被错误过滤了，所以我们可以用QueryExpand查询扩展。
 
-**Query Expansion（查询扩展）**是信息检索领域的一项经典技术，其核心思想是将用户的原始查询自动扩展为多个语义相近的变体查询，从而提高检索的召回率。
+**Query Expansion查询扩展**是信息检索领域的一项经典技术，其核心思想是将用户的原始查询自动扩展为多个语义相近的变体查询，从而提高检索的召回率。
 
 比如你搜索"Claude 4.6"，可以扩展为"Claude Sonnet 4.6"、"Anthropic Claude Update "、"Claude 新版本"等等，从而提高检索到的内容的数量。
 
